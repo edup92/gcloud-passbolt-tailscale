@@ -1,0 +1,57 @@
+---
+- name: Install Passbolt
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    paquete_ejemplo: git
+
+  tasks:
+    - name: Configurar repositorio PHP y actualizar caché de apt
+      block:
+        - name: Actualizar caché de apt
+          apt:
+            update_cache: true
+        - name: Añadir repositorio PHP 8.2
+          apt_repository:
+            repo: ppa:ondrej/php
+            state: present
+        - name: Añadir clave GPG de Tailscale
+          apt_key:
+            url: https://pkgs.tailscale.com/stable/ubuntu/noarmor.gpg
+            state: present
+        - name: Añadir repositorio de Tailscale
+          apt_repository:
+            repo: "deb https://pkgs.tailscale.com/stable/ubuntu {{ ansible_lsb.codename }} main"
+            state: present
+        - name: Actualizar caché de apt tras añadir repositorio PHP
+          apt:
+            update_cache: true
+      become: true
+
+    - name: Instalar nginx, MySQL y PHP >= 8.2
+      apt:
+        name:
+          - nginx
+          - mysql-server
+          - php8.2
+          - php8.2-fpm
+          - php8.2-cli
+          - composer
+          - git
+          - gnupg
+          - tailscale
+          # Extensiones PHP adicionales
+          - php8.2-gnupg
+          - php8.2-intl
+          - php8.2-mbstring
+          - php8.2-xml
+          - php8.2-gd
+          - php8.2-imagick
+          - php8.2-mysql
+          - php8.2-curl
+          - php8.2-ldap
+        state: present
+        update_cache: true
+      become: true
