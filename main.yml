@@ -7,7 +7,7 @@
   tasks:
     - name: Installations
       block:
-        - name: Actualizar caché de apt
+        - name: Update APT cache 
           apt:
             update_cache: true
         - name: Basic Packages
@@ -15,19 +15,22 @@
             name:
               - software-properties-common
               - gnupg
+              - curl
             state: present
         - name: Add PHP Repo
           apt_repository:
             repo: ppa:ondrej/php
             state: present
-        - name: Add GPG Tailscale key
-          apt_key:
-            url: https://pkgs.tailscale.com/stable/ubuntu/noarmor.gpg
-            state: present
-        - name: Add Tailscale repo
-          apt_repository:
-            repo: "deb https://pkgs.tailscale.com/stable/ubuntu {{ ansible_lsb.codename }} main"
-            state: present
+        - name: Download Tailscale GPG key (modern method)
+          get_url:
+            url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_lsb.codename }}.noarmor.gpg"
+            dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+            mode: "0644"
+        - name: Download Tailscale apt source list
+          get_url:
+            url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_lsb.codename }}.tailscale-keyring.list"
+            dest: /etc/apt/sources.list.d/tailscale.list
+            mode: "0644"
         - name: Update apt cache
           apt:
             update_cache: true
