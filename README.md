@@ -27,7 +27,7 @@ gcloud compute instances create passbolt \
   --zone=europe-southwest1-a \
   --machine-type=e2-small \
   --network-interface=network-tier=PREMIUM,stack-type=IPV4_ONLY,subnet=default \
-  --metadata=enable-osconfig=TRUE,startup-script='apt update && apt install -y ansible' \
+  --metadata=enable-osconfig=TRUE,startup-script='apt update && apt install -y ansible git' \
   --maintenance-policy=MIGRATE \
   --provisioning-model=STANDARD \
   --service-account=32608782837-compute@developer.gserviceaccount.com \
