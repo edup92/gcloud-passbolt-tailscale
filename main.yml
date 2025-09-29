@@ -7,7 +7,7 @@
   tasks:
     - name: Installations
       block:
-        - name: Update APT cache 
+        - name: Update APT cache
           apt:
             update_cache: true
         - name: Basic Packages
@@ -16,6 +16,7 @@
               - software-properties-common
               - gnupg
               - curl
+              - python3-pymysql
             state: present
         - name: Add PHP Repo
           apt_repository:
@@ -36,7 +37,7 @@
             update_cache: true
       become: true
 
-    - name: Install nginx, MySQL, PHP >= 8.2
+    - name: Install nginx, MySQL, PHP 8.2, Tailscale
       apt:
         name:
           - nginx
@@ -45,8 +46,6 @@
           - php8.2-fpm
           - php8.2-cli
           - composer
-          - git
-          - gnupg
           - tailscale
           # Extensiones PHP adicionales
           - php8.2-gnupg
@@ -61,3 +60,52 @@
         state: present
         update_cache: true
       become: true
+
+    - name: Configure Mysql
+      block:
+        - name: Get current MySQL users (by socket)
+          community.mysql.mysql_info:
+            login_unix_socket: /var/run/mysqld/mysqld.sock
+            filter: users
+          register: mysql_users
+          failed_when: false
+          ignore_errors: true
+        - name: Set MySQL root password using unix socket if needed
+          community.mysql.mysql_user:
+            name: root
+            host: localhost
+            password: "{{ mysql_root_password }}"
+            plugin: mysql_native_password
+            login_unix_socket: /var/run/mysqld/mysqld.sock
+            state: present
+          become: true
+          when: >
+            mysql_users.users is defined and
+            (mysql_users.users | selectattr('User', 'equalto', 'root') | selectattr('Host', 'equalto', 'localhost') | map(attribute='plugin') | first | default('')) != "mysql_native_password"
+        - name: Remove root user on all hosts except localhost
+          community.mysql.mysql_user:
+            name: root
+            host: "{{ item }}"
+            state: absent
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+          loop:
+            - 127.0.0.1
+            - ::1
+            - "%"
+          become: true
+        - name: Remove anonymous MySQL users
+          community.mysql.mysql_user:
+            name: ""
+            host_all: true
+            state: absent
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+          become: true
+        - name: Remove MySQL test database
+          community.mysql.mysql_db:
+            name: test
+            state: absent
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+          become: true
