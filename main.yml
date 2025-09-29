@@ -4,33 +4,36 @@
   connection: local
   gather_facts: true
 
-  vars:
-    paquete_ejemplo: git
-
   tasks:
-    - name: Configurar repositorio PHP y actualizar caché de apt
+    - name: Installations
       block:
         - name: Actualizar caché de apt
           apt:
             update_cache: true
-        - name: Añadir repositorio PHP 8.2
+        - name: Basic Packages
+          apt:
+            name:
+              - software-properties-common
+              - gnupg
+            state: present
+        - name: Add PHP Repo
           apt_repository:
             repo: ppa:ondrej/php
             state: present
-        - name: Añadir clave GPG de Tailscale
+        - name: Add GPG Tailscale key
           apt_key:
             url: https://pkgs.tailscale.com/stable/ubuntu/noarmor.gpg
             state: present
-        - name: Añadir repositorio de Tailscale
+        - name: Add Tailscale repo
           apt_repository:
             repo: "deb https://pkgs.tailscale.com/stable/ubuntu {{ ansible_lsb.codename }} main"
             state: present
-        - name: Actualizar caché de apt tras añadir repositorio PHP
+        - name: Update apt cache
           apt:
             update_cache: true
       become: true
 
-    - name: Instalar nginx, MySQL y PHP >= 8.2
+    - name: Install nginx, MySQL, PHP >= 8.2
       apt:
         name:
           - nginx
