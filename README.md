@@ -65,5 +65,5 @@ mysql_passbolt_password: "demo"
 ## Ejecución del playbook
 
 ```bash
- git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; ansible-playbook gcloud-passbolt-tailscale/main.yml --connection=local -e @secrets.yml
+ git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; ansible-playbook gcloud-passbolt-tailscale/main.yml --connection=local -e @gcloud-passbolt-tailscale/secrets.yml
 ```
