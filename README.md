@@ -8,7 +8,7 @@ Este documento describe cómo instalar Ansible en tu máquina local y ejecutar e
 - Usuario con permisos para instalar paquetes (sudo)
 - Conexión a Internet para descargar dependencias
 
-## Creacion de instancia de google cloud, snapshot job y firewall
+## Creacion de instancia de google cloud, snapshot job y firewall. Ejecutar en Cloud Shell
 
 ```bash
 # 1. Crea la regla de firewall para denegar todo el tráfico entrante
