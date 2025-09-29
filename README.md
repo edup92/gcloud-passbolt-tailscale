@@ -57,8 +57,13 @@ gcloud compute disks add-resource-policies passbolt \
   --resource-policies=projects/personal-473223/regions/europe-southwest1/resourcePolicies/passbolt-snapshot
 ```
 
+## Modifica secrets.yml substituyendo los valores demo
+
+mysql_root_password: "demo"
+mysql_passbolt_password: "demo"
+
 ## Ejecución del playbook
 
 ```bash
- git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; ansible-playbook gcloud-passbolt-tailscale/main.yml --connection=local -e "mysql_root_password=TuPasswordSegura"
+ git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; ansible-playbook gcloud-passbolt-tailscale/main.yml --connection=local -e @secrets.yml
 ```
