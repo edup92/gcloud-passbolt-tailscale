@@ -66,4 +66,4 @@ sudo apt update ; sudo apt install -y ansible
 ## Ejecución del playbook
 
 ```bash
- git clone https://github.com/edup92/passbolt-tailscale.git ; cd passbolt-ansible ; ansible-playbook main.yml --connection=local
+ git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; cd passbolt-ansible ; ansible-playbook main.yml --connection=local
