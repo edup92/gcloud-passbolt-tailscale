@@ -8,7 +8,7 @@ Este documento describe cómo instalar Ansible en tu máquina local y ejecutar e
 - Usuario con permisos para instalar paquetes (sudo)
 - Conexión a Internet para descargar dependencias
 
-## Creacion de instancia de google cloud, snapshot job y firewall. Ejecutar en Cloud Shell
+## Creacion de instancia de google cloud, snapshot job y firewall. Ejecutar en Cloud Shell (incluye ansible)
 
 ```bash
 # 1. Crea la regla de firewall para denegar todo el tráfico entrante
@@ -57,13 +57,8 @@ gcloud compute disks add-resource-policies passbolt \
   --resource-policies=projects/personal-473223/regions/europe-southwest1/resourcePolicies/passbolt-snapshot
 ```
 
-## Instalación de Ansible
-
-```bash
-sudo apt update ; sudo apt install -y ansible
-```
-
 ## Ejecución del playbook
 
 ```bash
- git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; ansible-playbook gcloud-passbolt-tailscale/main.yml --connection=local
+ git clone https://github.com/edup92/gcloud-passbolt-tailscale.git ; ansible-playbook gcloud-passbolt-tailscale/main.yml --connection=local -e "mysql_root_password=TuPasswordSegura"
+```
