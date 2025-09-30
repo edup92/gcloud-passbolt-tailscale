@@ -78,7 +78,6 @@
             plugin: mysql_native_password
             login_unix_socket: /var/run/mysqld/mysqld.sock
             state: present
-          become: true
           when: >
             mysql_users.users is defined and
             (mysql_users.users | selectattr('User', 'equalto', 'root') | selectattr('Host', 'equalto', 'localhost') | map(attribute='plugin') | first | default('')) != "mysql_native_password"
@@ -93,7 +92,6 @@
             - 127.0.0.1
             - ::1
             - "%"
-          become: true
         - name: Remove anonymous MySQL users
           community.mysql.mysql_user:
             name: ""
@@ -101,11 +99,121 @@
             state: absent
             login_user: root
             login_password: "{{ mysql_root_password }}"
-          become: true
         - name: Remove MySQL test database
           community.mysql.mysql_db:
             name: test
             state: absent
             login_user: root
             login_password: "{{ mysql_root_password }}"
+      become: true
+
+    - name: Configure Mysql passbolt DB
+      block:
+        - name: Create Passbolt database
+          community.mysql.mysql_db:
+            name: "{{ passbolt_db_name }}"
+            encoding: utf8mb4
+            collation: utf8mb4_unicode_ci
+            state: present
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+        - name: Create Passbolt database user
+          community.mysql.mysql_user:
+            name: "{{ passbolt_db_user }}"
+            password: "{{ passbolt_db_password }}"
+            host: "localhost"
+            priv: "{{ passbolt_db_name }}.*:ALL"
+            state: present
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+      become: true
+
+    - name: Get Passbolt files
+      block:
+        - name: Ensure /var/www exists
+          file:
+            path: /var/www
+            state: directory
+            owner: www-data
+            group: www-data
+            mode: "0755"
+        - name: Clone Passbolt repository
+          git:
+            repo: "https://github.com/passbolt/passbolt_api.git"
+            dest: /var/www/passbolt_api
+            version: master
+            update: yes
+            force: yes
+        - name: Rename passbolt_api directory to passbolt
+          command: mv /var/www/passbolt_api /var/www/passbolt
+          args:
+            removes: /var/www/passbolt_api
+            creates: /var/www/passbolt
+      become: true
+
+    - name: Generate GPG
+      block:
+        - name: Ensure GPG config directory exists
+          file:
+            path: /var/www/passbolt/config/gpg
+            state: directory
+            owner: www-data
+            group: www-data
+            mode: "0700"
+          become: true # Solo root puede crearla, y le pone owner www-data
+
+        - name: Create GPG batch file
+          copy:
+            dest: /var/www/passbolt/config/gpg/gpg_batch
+            content: |
+              Key-Type: RSA
+              Key-Length: 3072
+              Key-Usage: sign,cert
+              Subkey-Type: RSA
+              Subkey-Length: 3072
+              Subkey-Usage: encrypt
+              Name-Real: Passbolt Server Key
+              Name-Email: {{ gpg_email }}
+              Expire-Date: 0
+              %no-protection
+              %commit
+            owner: www-data
+            group: www-data
+            mode: "0600"
+          become: true
+
+        - name: Generate GPG key for Passbolt (only if not present)
+          shell: |
+            gpg --batch --no-tty --homedir /var/www/passbolt/config/gpg --gen-key /var/www/passbolt/config/gpg/gpg_batch
+            rm /var/www/passbolt/config/gpg/gpg_batch
+          args:
+            creates: /var/www/passbolt/config/gpg/private-keys-v1.d
+          become: true
+          become_user: www-data
+
+        - name: Export GPG private key (armor)
+          shell: |
+            gpg --homedir /var/www/passbolt/config/gpg --armor --export-secret-keys "{{ gpg_email }}" > /var/www/passbolt/config/gpg/serverkey_private.asc
+          args:
+            creates: /var/www/passbolt/config/gpg/serverkey_private.asc
+          become: true
+          become_user: www-data
+
+        - name: Export GPG public key (armor)
+          shell: |
+            gpg --homedir /var/www/passbolt/config/gpg --armor --export "{{ gpg_email }}" > /var/www/passbolt/config/gpg/serverkey.asc
+          args:
+            creates: /var/www/passbolt/config/gpg/serverkey.asc
+          become: true
+          become_user: www-data
+
+        - name: Ensure permissions of GPG key files
+          file:
+            path: "{{ item }}"
+            owner: www-data
+            group: www-data
+            mode: "0600"
+          loop:
+            - /var/www/passbolt/config/gpg/serverkey.asc
+            - /var/www/passbolt/config/gpg/serverkey_private.asc
           become: true
