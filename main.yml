@@ -17,6 +17,7 @@
               - software-properties-common
               - gnupg
               - curl
+              - python3-pymysql
             state: present
         - name: Download Passbolt repository setup script
           command: curl -LO https://download.passbolt.com/ce/installer/passbolt-repo-setup.ce.sh
@@ -44,7 +45,167 @@
 
     - name: Run passbolt setup
       block:
+        - name: Check if PHP or MySQL are running
+          shell: pgrep php || pgrep mysqld
+          register: php_or_mysql_running
+          failed_when: false
+          changed_when: false
         - name: Run Passbolt repo setup script
           shell: sudo bash ./passbolt-repo-setup.ce.sh
           args:
             chdir: /tmp
+            creates: /etc/apt/sources.list.d/passbolt-ce.list
+          when: php_or_mysql_running.rc != 0
+        - name: Install Passbolt packages
+          apt:
+            name:
+              - passbolt-ce-server
+            state: present
+
+    - name: Configure mysql
+      block:
+        - name: Change root auth from socket to password authentication
+          community.mysql.mysql_query:
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+            query: ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '{{ mysql_root_password }}'
+          ignore_errors: true
+        - name: Flush MySQL privileges
+          community.mysql.mysql_query:
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+            query: FLUSH PRIVILEGES
+        - name: Create Passbolt MySQL database
+          mysql_db:
+            name: "{{ passbolt_db_name }}"
+            state: present
+            login_user: "root"
+            login_password: "{{ mysql_root_password }}"
+        - name: Ensure Passbolt MySQL user and grants
+          mysql_user:
+            name: "{{ passbolt_db_user }}"
+            password: "{{ passbolt_db_password }}"
+            priv: "{{ passbolt_db_name }}.*:ALL"
+            host: localhost
+            state: present
+            login_user: "root"
+            login_password: "{{ mysql_root_password }}"
+
+    - name: Configure Passbolt HTTPS
+      block:
+        - name: Update Passbolt configuration for public access
+          lineinfile:
+            path: /etc/passbolt/passbolt.php
+            regexp: "'fullBaseUrl' => 'http"
+            line: "        'fullBaseUrl' => 'https://' . $_SERVER['HTTP_HOST'],"
+            backup: yes
+        - name: Remove default Nginx site
+          file:
+            path: /etc/nginx/sites-enabled/default
+            state: absent
+        - name: Create SSL directory
+          file:
+            path: /etc/ssl/passbolt
+            state: directory
+            mode: "0755"
+        - name: Generate private key
+          openssl_privatekey:
+            path: /etc/ssl/passbolt/passbolt.key
+            size: 2048
+            mode: "0600"
+        - name: Generate CSR for SSL certificate
+          openssl_csr:
+            path: /etc/ssl/passbolt/passbolt.csr
+            privatekey_path: /etc/ssl/passbolt/passbolt.key
+            common_name: "passbolt.local"
+            subject_alt_name:
+              - "DNS:*"
+              - "DNS:localhost"
+              - "IP:127.0.0.1"
+        - name: Generate self-signed SSL certificate
+          openssl_certificate:
+            path: /etc/ssl/passbolt/passbolt.crt
+            csr_path: /etc/ssl/passbolt/passbolt.csr
+            privatekey_path: /etc/ssl/passbolt/passbolt.key
+            provider: selfsigned
+            selfsigned_not_after: "+3650d"
+        - name: Configure Nginx with SSL and redirect
+          copy:
+            dest: /etc/nginx/sites-enabled/nginx-passbolt.conf
+            content: |
+              # HTTP to HTTPS redirect
+              server {
+                  listen 80;
+                  listen [::]:80;
+                  server_name _;
+                  return 301 https://$host$request_uri;
+              }
+
+              # HTTPS server
+              server {
+                  listen 443 ssl http2;
+                  listen [::]:443 ssl http2;
+                  server_name _;
+
+                  ssl_certificate /etc/ssl/passbolt/passbolt.crt;
+                  ssl_certificate_key /etc/ssl/passbolt/passbolt.key;
+                  ssl_protocols TLSv1.2 TLSv1.3;
+                  ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+                  ssl_prefer_server_ciphers off;
+
+                  client_body_buffer_size     100K;
+                  client_header_buffer_size   1K;
+                  client_max_body_size        5M;
+
+                  client_body_timeout   10;
+                  client_header_timeout 10;
+                  keepalive_timeout     5 5;
+                  send_timeout          10;
+
+                  root /usr/share/php/passbolt/webroot;
+                  index index.php;
+                  error_log /var/log/nginx/passbolt-error.log info;
+                  access_log /var/log/nginx/passbolt-access.log;
+
+                  location / {
+                      try_files $uri $uri/ /index.php?$args;
+                  }
+
+                  location ~ \.php$ {
+                      try_files                $uri =404;
+                      include                  fastcgi_params;
+                      fastcgi_pass             unix:/run/php/php8.3-fpm.sock;
+                      fastcgi_index            index.php;
+                      fastcgi_intercept_errors on;
+                      fastcgi_split_path_info  ^(.+\.php)(.+)$;
+                      fastcgi_param            SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                      fastcgi_param            SERVER_NAME $http_host;
+                      fastcgi_param PHP_VALUE  "upload_max_filesize=5M \n post_max_size=5M";
+                  }
+              }
+        - name: Test Nginx configuration
+          command: nginx -t
+          register: nginx_test
+          changed_when: false
+        - name: Reload nginx
+          service:
+            name: nginx
+            state: reloaded
+          when: nginx_test.rc == 0
+
+    - name: Configure Tailscale
+      block:
+        - name: Start and enable Tailscale service
+          systemd:
+            name: tailscaled
+            state: started
+            enabled: yes
+        - name: Connect to Tailscale network
+          command: tailscale up --authkey={{ tailscale_key }}
+          register: tailscale_up
+          changed_when: "'Success' in tailscale_up.stderr or tailscale_up.rc == 0"
+          failed_when: tailscale_up.rc != 0 and 'already logged in' not in tailscale_up.stderr
+        - name: Get Tailscale status
+          command: tailscale status --json
+          register: tailscale_status
+          changed_when: false
